@@ -1,3 +1,4 @@
-web/
-InterfaceService/
-*.pdf
+/web
+/InterfaceService
+Consigna_TP2*
+/firmware_v2
