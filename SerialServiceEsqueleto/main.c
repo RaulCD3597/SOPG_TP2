@@ -9,10 +9,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <signal.h>
 #include "SerialManager.h"
 
 #define BUFFER_LEN 			100
-#define SERIAL_PORT 		2
+#define SERIAL_PORT 		1
 #define BAUDRATE 			115200
 #define SERIAL_EV_STRING 	">TOGGLE STATE:"
 #define SERIAL_EV_FORMAT 	">TOGGLE STATE:%d"
@@ -27,14 +28,55 @@ socklen_t 			addr_len;
 struct sockaddr_in 	clientaddr;
 struct sockaddr_in 	serveraddr;
 int 				sockfd, newfd;
+pthread_t 			thread_TCP;
+struct sigaction 	sign_action_1, sign_action_2;
 
 static void SerialProcessPacket(void);
 static void TcpProcessPacket(void);
 static void *TCP_Task(void *params);
+static void BlockSignals(void);
+static void UnblockSignals(void);
+
+static void SigInt_handler()
+{
+	write(1, "\nCtrl+c pressed!!\n",18);
+	if ( 0 != pthread_cancel(thread_TCP) )
+	{
+		perror("Error");
+	}
+	exit(EXIT_SUCCESS);
+}
+
+static void SigTerm_handler()
+{
+	write(1, "Sigterm received!\n", 18);
+	if ( 0 != pthread_cancel(thread_TCP) )
+	{
+		perror("Error");
+	}
+	exit(EXIT_SUCCESS);
+}
 
 int main(void)
 {
-	pthread_t thread_TCP;
+	sign_action_1.sa_handler = SigInt_handler;
+	sign_action_1.sa_flags = 0; // SA_RESTART; //
+	sigemptyset(&sign_action_1.sa_mask);
+
+	sign_action_2.sa_handler = SigTerm_handler;
+	sign_action_2.sa_flags = 0; // SA_RESTART; //
+	sigemptyset(&sign_action_2.sa_mask);
+
+	if (sigaction(SIGINT, &sign_action_1, NULL) == -1) 
+	{
+		perror("sigaction");
+		exit(1);
+	}
+
+	if (sigaction(SIGTERM, &sign_action_2, NULL) == -1) {
+		perror("sigaction");
+		exit(1);
+	}
 
 	// Creamos socket
 	sockfd = socket( AF_INET,SOCK_STREAM, 0 );
@@ -80,6 +122,8 @@ int main(void)
         printf("Server listening..\n");
 	}
 
+	BlockSignals();
+
 	// Creamos thread para tarea TCP
 	int ret = pthread_create(&thread_TCP, NULL, TCP_Task, NULL);
 	if (0 != ret)
@@ -88,12 +132,14 @@ int main(void)
 		exit(ret);
 	}
 
+	UnblockSignals();
+
 	printf("Inicio Serial Service\r\n");
 
 	// Abrimos el puerto serial
 	if (serial_open(SERIAL_PORT, BAUDRATE))
 	{
-		exit(EXIT_FAILURE);
+		exit(EXIT_SUCCESS);
 	}
 
 	// El hilo principal del proceso se encarga de la tarea de puerto serie
@@ -161,6 +207,7 @@ static void SerialProcessPacket(void)
 		if ( -1 == write(newfd, RX_buffer, strlen(RX_buffer)) )
 		{
 			perror("Error escribiendo mensaje en socket");
+			exit(1);
 		}
 	}
 }
@@ -176,5 +223,31 @@ static void TcpProcessPacket(void)
 		out4 = TCP_buffer[10] - '0';
 		sprintf( TCP_buffer, SERIAL_SET_FORMAT, out1, out2, out3, out4 );
 		serial_send( TCP_buffer, strlen(TCP_buffer) );
+	}
+}
+
+static void BlockSignals(void)
+{
+	sigset_t set;
+    sigemptyset(&set);
+    sigfillset(&set);
+    int err = pthread_sigmask(SIG_BLOCK, &set, NULL);
+	if ( 0 !=err )
+	{
+		perror("Error blocking signals");
+		exit(1);
+	}
+}
+
+static void UnblockSignals(void)
+{
+	sigset_t set;
+    sigemptyset(&set);
+    sigfillset(&set);
+    int err = pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+	if ( 0 !=err )
+	{
+		perror("Error unblocking signals");
+		exit(1);
 	}
 }
