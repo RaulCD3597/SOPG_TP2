@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
@@ -30,6 +31,7 @@ struct sockaddr_in 	serveraddr;
 int 				sockfd, newfd;
 pthread_t 			thread_TCP;
 struct sigaction 	sign_action_1, sign_action_2;
+bool				socket_open = false;
 
 static void SerialProcessPacket(void);
 static void TcpProcessPacket(void);
@@ -173,6 +175,7 @@ static void *TCP_Task(void *params)
 		    exit(1);
 	    }
 
+		socket_open = true;
 		char ipClient[32];
 		inet_ntop(AF_INET, &(clientaddr.sin_addr), ipClient, sizeof(ipClient));
 		printf  ("server:  conexion desde:  %s\n",ipClient);
@@ -192,6 +195,7 @@ static void *TCP_Task(void *params)
 			}
 		}
 		// Cerramos conexion con cliente
+		socket_open = false;
     	close(newfd);
 	}
 	return NULL;
@@ -201,13 +205,16 @@ static void SerialProcessPacket(void)
 {
 	if ( !memcmp(RX_buffer, SERIAL_EV_STRING, strlen(SERIAL_EV_STRING)) )
 	{
-		int led;
-		sscanf(RX_buffer, SERIAL_EV_FORMAT, &led);
-		sprintf(RX_buffer, TCP_EV_FORMAT, led);
-		if ( -1 == write(newfd, RX_buffer, strlen(RX_buffer)) )
+		if ( socket_open )
 		{
-			perror("Error escribiendo mensaje en socket");
-			exit(1);
+			int led;
+			sscanf(RX_buffer, SERIAL_EV_FORMAT, &led);
+			sprintf(RX_buffer, TCP_EV_FORMAT, led);
+			if ( -1 == write(newfd, RX_buffer, strlen(RX_buffer)) )
+			{
+				perror("Error escribiendo mensaje en socket");
+				exit(1);
+			}
 		}
 	}
 }
