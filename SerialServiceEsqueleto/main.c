@@ -32,6 +32,7 @@ int 				sockfd, newfd;
 pthread_t 			thread_TCP;
 struct sigaction 	sign_action_1, sign_action_2;
 bool				socket_open = false;
+bool				running = true;
 
 static void SerialProcessPacket(void);
 static void TcpProcessPacket(void);
@@ -42,21 +43,13 @@ static void UnblockSignals(void);
 static void SigInt_handler()
 {
 	write(1, "\nCtrl+c pressed!!\n",18);
-	if ( 0 != pthread_cancel(thread_TCP) )
-	{
-		perror("Error");
-	}
-	exit(EXIT_SUCCESS);
+	running = false;
 }
 
 static void SigTerm_handler()
 {
 	write(1, "Sigterm received!\n", 18);
-	if ( 0 != pthread_cancel(thread_TCP) )
-	{
-		perror("Error");
-	}
-	exit(EXIT_SUCCESS);
+	running = false;
 }
 
 int main(void)
@@ -145,11 +138,15 @@ int main(void)
 	}
 
 	// El hilo principal del proceso se encarga de la tarea de puerto serie
-	for (;;)
+	while (running)
 	{
 		int bytes_received;
-		while((bytes_received = serial_receive(RX_buffer, BUFFER_LEN)))
+		while(!(bytes_received = serial_receive(RX_buffer, BUFFER_LEN)))
 		{
+			if ( !running )
+			{
+				goto end;
+			}
 			usleep(5000);
 		}
 
@@ -157,7 +154,11 @@ int main(void)
 		SerialProcessPacket();
 	}
 
-	pthread_join(thread_TCP, NULL);
+end:
+	if ( 0 != pthread_cancel(thread_TCP) )
+	{
+		perror("Error");
+	}
 
 	exit(EXIT_SUCCESS);
 	return 0;
@@ -165,7 +166,7 @@ int main(void)
 
 static void *TCP_Task(void *params)
 {
-	for (;;)
+	while (running)
 	{
 		// Ejecutamos accept() para recibir conexiones entrantes
 		addr_len = sizeof(struct sockaddr_in);
