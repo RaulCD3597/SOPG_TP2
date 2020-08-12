@@ -33,6 +33,7 @@ pthread_t 			thread_TCP;
 struct sigaction 	sign_action_1, sign_action_2;
 bool				socket_open = false;
 bool				running = true;
+pthread_mutex_t 	mutexSocket = PTHREAD_MUTEX_INITIALIZER;
 
 static void SerialProcessPacket(void);
 static void TcpProcessPacket(void);
@@ -176,7 +177,9 @@ static void *TCP_Task(void *params)
 		    exit(1);
 	    }
 
+		pthread_mutex_lock(&mutexSocket);
 		socket_open = true;
+		pthread_mutex_unlock(&mutexSocket);
 		char ipClient[32];
 		inet_ntop(AF_INET, &(clientaddr.sin_addr), ipClient, sizeof(ipClient));
 		printf  ("server:  conexion desde:  %s\n",ipClient);
@@ -196,7 +199,9 @@ static void *TCP_Task(void *params)
 			}
 		}
 		// Cerramos conexion con cliente
+		pthread_mutex_lock(&mutexSocket);
 		socket_open = false;
+		pthread_mutex_unlock(&mutexSocket);
     	close(newfd);
 	}
 	return NULL;
@@ -206,6 +211,7 @@ static void SerialProcessPacket(void)
 {
 	if ( !memcmp(RX_buffer, SERIAL_EV_STRING, strlen(SERIAL_EV_STRING)) )
 	{
+		pthread_mutex_lock(&mutexSocket);
 		if ( socket_open )
 		{
 			int led;
@@ -217,6 +223,7 @@ static void SerialProcessPacket(void)
 				exit(1);
 			}
 		}
+		pthread_mutex_unlock(&mutexSocket);
 	}
 }
 
