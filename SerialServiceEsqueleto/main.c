@@ -32,7 +32,7 @@ int 				sockfd, newfd;
 pthread_t 			thread_TCP;
 struct sigaction 	sign_action_1, sign_action_2;
 bool				socket_open = false;
-bool				running = true;
+sig_atomic_t		running = 1;
 pthread_mutex_t 	mutexSocket = PTHREAD_MUTEX_INITIALIZER;
 
 static void SerialProcessPacket(void);
@@ -44,13 +44,27 @@ static void UnblockSignals(void);
 static void SigInt_handler()
 {
 	write(1, "\nCtrl+c pressed!!\n",18);
-	running = false;
+	running = 0;
 }
 
 static void SigTerm_handler()
 {
 	write(1, "Sigterm received!\n", 18);
-	running = false;
+	running = 0;
+}
+
+static void end_process(void)
+{
+	if ( 0 != pthread_cancel(thread_TCP) )
+	{
+		perror("Error");
+	}
+
+	if ( 0 != pthread_join(thread_TCP, NULL) )
+	{
+		perror("Error");
+	}
+	exit(0);
 }
 
 int main(void)
@@ -146,7 +160,7 @@ int main(void)
 		{
 			if ( !running )
 			{
-				goto end;
+				end_process();
 			}
 			usleep(5000);
 		}
@@ -155,13 +169,7 @@ int main(void)
 		SerialProcessPacket();
 	}
 
-end:
-	if ( 0 != pthread_cancel(thread_TCP) )
-	{
-		perror("Error");
-	}
-
-	exit(EXIT_SUCCESS);
+	end_process();
 	return 0;
 }
 
